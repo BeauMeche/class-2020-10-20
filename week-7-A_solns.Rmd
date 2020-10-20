@@ -1,0 +1,107 @@
+---
+title: "Week 7, Day 1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# We need the PPBDS.data package because it includes the qscores data which we
+# will use for this exercise. rsample is a package from the tidymodels
+# collection of packages which makes random sample creation easier. See The
+# Primer for examples on its use.
+
+knitr::opts_chunk$set(echo = FALSE)
+library(PPBDS.data)
+library(rsample)
+library(tidyverse)
+```
+
+We learned how to estimate a posterior probability distribution for a single parameter in Chapter 6. But, in doing so, we had to do a lot of work, calculating the joint distribution 
+$p(models, data)$ by hand, and then deriving the conditional probability. What a bother! Fortunately, the bootstrap provides an easier and more generalizable approach.
+
+Define the parameter H as the average number of hours of work reported by students for college courses. 
+
+
+## Scene 1
+
+**Prompt:** Create a tibble called `q_resamples` with three columns: `splits`, `id` and `boot`.  The first two columns are created automatically when you use `rsample::bootstraps()`. The last variable is a list column which includes a tibble with resampled data from `qscores`. There only column you need to keep from `qscores` is `hours`. Refer to Chapter 7 in the *The Primer* for hints.
+
+
+
+```{r sc1}
+set.seed(9)
+q_resamples <- qscores %>%
+  select(hours) %>% 
+  bootstraps(times = 1000) %>%
+  mutate(boot = map(splits, ~ analysis(.)))
+```
+
+
+**Comments:** This code is almost word-for-word from Chapter 7. Sadly, many students will not have read the Primer, so you may want to point them in the right direction. Also, note that Tutorial 7 does not include any bootstrap examples. It only covers `stan_glm()`.
+
+* Explain that `set.seed()` is valuable because it allows you to produce the same answer each time.
+
+* Point out the value of the code chunk cache=TRUE for code which takes awhile to run. It isn't really necessary here, at least until you set a much bigger value for `times`.
+
+* We don't need to select `hours`, but it is good practice to only keep around data which you are going to use. This does not matter much with small data sets like qscores. With bigger data --- whether that data is bigger in terms of rows or columns or both --- such concerns are crucial.
+
+* For intuition, consider that the boostrap is also building a joint distribution --- sort of. In Chapter 6, we built the joint distribution by sampling, conditional on assuming the truth about the urn, using rbinom. The bootstrap does the same thing. It assumes that the data you have is a complete distribution of the truth. You then sample lots of versions from that distribution, in the same way that we sampled lots of paddles of size 20 while assuming that 10% of the urn was red. In both cases, the results you get vary. Note that this metaphor is not perfect! But I think the intuition is the same.
+
+* If a group is going fast, tell them to create an object identical to `q_resamples` but without using bootstrap. That is, they need to build up the columns by hand. (They can skip the `splits` column if they want.)
+
+
+## Scene 2
+
+**Prompt:** Add two more columns to `q_resamples`: `hours_sampled` (the vector of hours pulled from each row of `boot`) and `mean_hours` (the mean of each `hours_sampled`). 
+
+
+```{r sc2}
+ql_resamples <- qscores %>%
+  select(hours) %>% 
+  bootstraps(times = 1000) %>%
+  mutate(boot = map(splits, ~ analysis(.))) %>%
+  mutate(hours_sampled = map(boot, ~ pull(., hours))) %>% 
+  mutate(mean_hours = map_dbl(hours_sampled, ~ mean(.)))
+
+```
+
+
+
+**Comments:** There are many ways to write this code. Make sure that students understand the difference between `map()` and `map_dbl()`. Explore different ways to put this together.
+
+* This code could, obviously, be made quicker and less memory intensive. Indeed, a good project for an advanced breakout room is challenging them to do so. (Start by pointing them here: http://adv-r.had.co.nz/Profiling.html.) 
+
+* Another way to keep a group busy is to ask them to measure something in addition to the mean. What about the 90th percentile? What about the 3rd most time intensive course? What about the number of courses with more than 10 hours of work? The same approach works for everything!
+
+
+## Scene 3
+
+**Prompt:** Create a graphic of the posterior probability distribution for H. Interpret it.
+
+```{r}
+ql_resamples %>% 
+  ggplot(aes(x = mean_hours, 
+             y = after_stat(count/sum(count)))) +
+    geom_histogram(binwidth = 0.02) +
+    labs(x = "Hours", 
+         y = "Probability",
+         title = "Posterior Distribution for the Average Hours")
+
+# ql_resamples$hours_sampled[2]
+```
+
+
+**Comments:** Last week, we made this posterior distribution "by hand," using `group_by()` and `summarize()`. The `after_stat()` trick is much simpler.
+
+For fast groups, ask them to: 
+
+* Use geom_density() instead of geom_histogram(). Does that change the interpretation? (Answer: No.)
+
+* Overlay geom_histogram() and geom_density() on the same plot. Discuss what this means.
+
+* Clean up the plot and place it on Rpubs. Share a link in #general.
+
+* How do you make the plot smoother? (Answer: Increase the number of boostrap samples.)
+
+* Use the patchwork package to create a panel of 4 plots, each showing the posterior for a different parameter.
+
+
